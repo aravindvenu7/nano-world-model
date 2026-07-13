@@ -22,9 +22,10 @@ class LeRobotDataSource(DataSource):
         root: Optional[str] = None,
         image_key: str = "observation.images.image",
         pad_action_dim: Optional[int] = None,
+        explicit_episodes: bool = False,
     ):
         try:
-            from lerobot.datasets.lerobot_dataset import LeRobotDataset
+            from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
             from torchvision.transforms import v2
         except ImportError:
             raise ImportError(
@@ -56,6 +57,11 @@ class LeRobotDataSource(DataSource):
             else:
                 episodes = list(range(int(n_rollout)))
                 print(f"Loading first {n_rollout} episodes")
+
+        if episodes is None and explicit_episodes:
+            metadata = LeRobotDatasetMetadata(repo_id=repo_id, root=root)
+            episodes = list(range(metadata.total_episodes))
+            print(f"Loading all {metadata.total_episodes} episodes explicitly")
 
         print(f"Loading LeRobot dataset: {repo_id} (root={root})")
         self.dataset = LeRobotDataset(

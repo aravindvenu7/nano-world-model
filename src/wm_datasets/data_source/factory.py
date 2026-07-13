@@ -52,8 +52,21 @@ def create_data_source(
         # RT-1 is consumed as the lerobot HF dataset (fractal20220817_data).
         # `data_path` is the HF repo_id; optional `root` kwarg points to a
         # local mirror. No per-episode .pth format is supported.
-        lerobot_params = {'root', 'image_key', 'preload_trajectories', 'episodes'}
+        lerobot_params = {'root', 'image_key', 'preload_trajectories', 'episodes', 'pad_action_dim'}
         lerobot_kwargs = {k: v for k, v in kwargs.items() if k in lerobot_params}
+        return LeRobotDataSource(
+            repo_id=data_path,
+            n_rollout=n_rollout,
+            **lerobot_kwargs,
+        )
+    
+    if dataset_name == "mt50":
+        lerobot_params = {
+            'root', 'image_key', 'preload_trajectories', 'episodes',
+            'pad_action_dim', 'explicit_episodes',
+        }
+        lerobot_kwargs = {k: v for k, v in kwargs.items() if k in lerobot_params}
+        lerobot_kwargs.setdefault('explicit_episodes', True)
         return LeRobotDataSource(
             repo_id=data_path,
             n_rollout=n_rollout,
@@ -74,5 +87,5 @@ def create_data_source(
 
     raise ValueError(
         f"Unknown dataset: {dataset_name}. "
-        f"Supported: point_maze, wall, pusht, rope, granular, rt1, csgo"
+        f"Supported: point_maze, wall, pusht, rope, granular, rt1, mt50, csgo"
     )

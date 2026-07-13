@@ -75,3 +75,7 @@ multirun/
 *.log
 pretrained_models/
 wandb/
+
+error/
+output/
+results/

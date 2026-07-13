@@ -51,6 +51,11 @@ from hydra.utils import get_original_cwd
 from .base import BaseExperiment
 
 
+def _trainer_precision(args):
+    """Return a precision value accepted by the installed PyTorch Lightning."""
+    return "bf16" if args.experiment.infra.mixed_precision else "32"
+
+
 class NanoWMTrainingModule(LightningModule):
     def __init__(self, args):
         super(NanoWMTrainingModule, self).__init__()
@@ -857,7 +862,7 @@ class TrainExperiment(BaseExperiment):
             val_check_interval=val_check_interval,
             check_val_every_n_epoch=None,
             accumulate_grad_batches=args.experiment.training.gradient_accumulation,
-            precision="bf16-mixed" if args.experiment.infra.mixed_precision else "32",
+            precision=_trainer_precision(args),
             num_sanity_val_steps=0,
         )
 
@@ -906,7 +911,7 @@ class TrainExperiment(BaseExperiment):
             enable_checkpointing=False,  # No checkpointing during evaluation
             logger=loggers,
             callbacks=callbacks_list,
-            precision="bf16-mixed" if args.experiment.infra.mixed_precision else "32",
+            precision=_trainer_precision(args),
             num_sanity_val_steps=0,
         )
 

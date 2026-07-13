@@ -1,0 +1,20 @@
+defaults:
+  - mt50/base
+
+name: "mt50"
+frame_interval: 1  # RT-1 is 3 FPS, no frame skipping
+
+loader:
+  # LeRobot HuggingFace dataset (v2.0). `data_path` is the repo_id;
+  # `root` points to a local mirror (download-time cache or a manual
+  # copy). Set RT1_DATA_ROOT to override the local path.
+  data_path: "lerobot/metaworld_mt50"
+  root: "${oc.env:MT50_DATA_ROOT,null}"
+  image_key: "observation.image"
+  explicit_episodes: True
+  normalize_action: True
+  train_slice_mode: "random"     # 87K episodes, random sampling for efficiency
+  val_slice_mode: "exhaustive"
+
+spec:
+  action_dim: 4

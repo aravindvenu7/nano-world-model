@@ -62,7 +62,7 @@ diffusion:
   history_stabilization_level: 0.02
 
 infra:
-  mixed_precision: true       # bf16-mixed; fp32 master params + opt state
+  mixed_precision: true       # bf16 trainer precision; fp32 master params + opt state
   vae_precision: fp32         # fp32 | bf16 | match_trainer. fp32 default
   gradient_checkpointing: false
   num_workers: 8              # video-decode-bound datasets override to 16+
