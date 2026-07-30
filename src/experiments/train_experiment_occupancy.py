@@ -369,7 +369,8 @@ class NanoWMOccupancyTrainingModule(LightningModule):
         batch_size = x_next.shape[0]
 
         noise = torch.randn_like(x_next)
-        tau = torch.rand(batch_size, device=x_next.device, dtype=x_next.dtype)
+        #tau = torch.rand(batch_size, device=x_next.device, dtype=x_next.dtype)
+        tau = torch.sigmoid(torch.randn(batch_size, device=x_next.device, dtype=x_next.dtype))
         model_t = self._tau_to_model_t(tau)
         x_t = self._interpolate(noise, x_next, tau)
         target_velocity = x_next - noise
@@ -400,7 +401,8 @@ class NanoWMOccupancyTrainingModule(LightningModule):
                 boot_task,
             )
 
-        boot_tau = torch.rand(boot_noise.shape[0], device=boot_noise.device, dtype=boot_noise.dtype)
+        #boot_tau = torch.rand(boot_noise.shape[0], device=boot_noise.device, dtype=boot_noise.dtype)
+        boot_tau = torch.sigmoid(torch.randn(boot_noise.shape[0], device=boot_noise.device, dtype=boot_noise.dtype))
         boot_model_t = self._tau_to_model_t(boot_tau)
         boot_x_t = self._interpolate(boot_noise, boot_target, boot_tau)
 

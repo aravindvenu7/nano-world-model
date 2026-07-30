@@ -333,8 +333,8 @@ def estimate_ors_rewards(
 
             noise = torch.randn_like(rep_goal)
             tau = torch.rand(rep_goal.shape[0], device=device, dtype=rep_goal.dtype)
-            #tau = (0.3 * tau) + 0.7
-            #tau = torch.sigmoid(0.5 * torch.randn(rep_goal.shape[0], device=device, dtype=rep_goal.dtype))
+            tau = (0.4 * tau) + 0.3
+            #tau = torch.sigmoid(0.3 * torch.randn(rep_goal.shape[0], device=device, dtype=rep_goal.dtype))
             x_t = pl_module._interpolate(noise, rep_goal, tau)
             model_t = pl_module._tau_to_model_t(tau)
             target_velocity = rep_goal - noise
@@ -504,20 +504,20 @@ def run(args) -> None:
         gt_rewards = gt_rewards_all[context_end_steps]
         gt_successes = gt_successes_all[context_end_steps]
 
-        np.savez(
-            output_dir / f"traj_{traj_idx:04d}_rewards.npz",
-            rewards=rewards,
-            costs=costs,
-            gt_rewards=gt_rewards,
-            gt_successes=gt_successes,
-            gt_rewards_all=gt_rewards_all,
-            gt_successes_all=gt_successes_all,
-            context_end_steps=context_end_steps,
-            frame_indices=frame_indices,
-            goal_step=np.array(goal_step, dtype=np.int64),
-            task_id=np.array(task_id, dtype=np.int64),
-            states=np.empty((0,), dtype=np.float32) if states is None else states.detach().cpu().numpy(),
-        )
+        # np.savez(
+        #     output_dir / f"traj_{traj_idx:04d}_rewards.npz",
+        #     rewards=rewards,
+        #     costs=costs,
+        #     gt_rewards=gt_rewards,
+        #     gt_successes=gt_successes,
+        #     gt_rewards_all=gt_rewards_all,
+        #     gt_successes_all=gt_successes_all,
+        #     context_end_steps=context_end_steps,
+        #     frame_indices=frame_indices,
+        #     goal_step=np.array(goal_step, dtype=np.int64),
+        #     task_id=np.array(task_id, dtype=np.int64),
+        #     states=np.empty((0,), dtype=np.float32) if states is None else states.detach().cpu().numpy(),
+        # )
         if not args.no_plots:
             write_plot(output_dir, traj_idx, frame_indices, rewards, gt_rewards, gt_successes)
 
