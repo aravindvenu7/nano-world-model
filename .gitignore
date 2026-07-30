@@ -1,6 +1,5 @@
 # Project-specific directories
 preprocess
-results
 results_img
 sample_videos
 checkpoints/
@@ -78,4 +77,10 @@ wandb/
 
 error/
 output/
-results/
+
+# Track result artifacts, but never upload model checkpoints.
+!results/
+!results/**
+results/**/checkpoints/
+results/**/*.ckpt
+*.ckpt

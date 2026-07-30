@@ -1,0 +1,52 @@
+{
+  "run_dir": "/home/ndarosa/nano-world-model/results/20260713_143843-NanoWM-B-2-F4S1-mt50",
+  "config_path": "/home/ndarosa/nano-world-model/results/20260713_143843-NanoWM-B-2-F4S1-mt50/config.yaml",
+  "checkpoint_path": "/home/ndarosa/nano-world-model/results/20260713_143843-NanoWM-B-2-F4S1-mt50/checkpoints/across_timesteps/epoch=177-step=50000.ckpt",
+  "split": "val",
+  "mc_samples": 100,
+  "mc_chunk_size": 10,
+  "window_batch_size": 8,
+  "window_stride": 1,
+  "use_target_model": false,
+  "trajectories": [
+    {
+      "traj_idx": 1527,
+      "task_id": 30,
+      "num_frames": 55,
+      "num_windows": 55,
+      "goal_step": 54,
+      "reward_min": -0.15070615708827972,
+      "reward_max": -0.0993196964263916,
+      "reward_mean": -0.13076633214950562,
+      "gt_reward_sum": 77.44329071044922,
+      "gt_reward_max": 6.767114162445068,
+      "gt_success_count": 1
+    },
+    {
+      "traj_idx": 2460,
+      "task_id": 48,
+      "num_frames": 85,
+      "num_windows": 85,
+      "goal_step": 84,
+      "reward_min": -0.19562645256519318,
+      "reward_max": -0.1564481258392334,
+      "reward_mean": -0.1797887086868286,
+      "gt_reward_sum": 129.81639099121094,
+      "gt_reward_max": 8.725110054016113,
+      "gt_success_count": 1
+    },
+    {
+      "traj_idx": 1300,
+      "task_id": 26,
+      "num_frames": 147,
+      "num_windows": 147,
+      "goal_step": 146,
+      "reward_min": -0.15648673474788666,
+      "reward_max": -0.11106565594673157,
+      "reward_mean": -0.1447603702545166,
+      "gt_reward_sum": 60.29995346069336,
+      "gt_reward_max": 10.0,
+      "gt_success_count": 1
+    }
+  ]
+}

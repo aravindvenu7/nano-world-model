@@ -1,0 +1,9 @@
+- dataset=mt50/mt50
+- model=nanowm_b2
+- logger.name=tensorboard
+- experiment.evaluation.metrics.evaluate=false
+- experiment.infra.num_workers=4
+- experiment.training.optimizer.lr=2e-4
+- experiment.training.max_steps=100000
+- experiment.training.checkpointing.across_timesteps.save_top_k=1
+- experiment.training.gradient_clip_start_step=0

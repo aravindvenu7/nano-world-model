@@ -1,0 +1,13 @@
+- dataset=mt50/mt50
+- model=nanowm_b2
+- logger.name=tensorboard
+- experiment.evaluation.metrics.evaluate=false
+- experiment.infra.num_workers=8
+- experiment.training.optimizer.lr=1e-4
+- experiment.training.max_steps=100000
+- experiment.training.checkpointing.across_timesteps.save_top_k=1
+- experiment.training.gradient_clip_start_step=0
+- +experiment.occupancy.gamma=0.99
+- +experiment.occupancy.flow_steps=10
+- +experiment.occupancy.target_tau=0.005
+- +experiment.occupancy.num_bootstrap_samples=1
