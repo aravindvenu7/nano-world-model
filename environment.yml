@@ -1,15 +1,17 @@
 name: nanowm
 channels:
-  - pytorch
-  - nvidia
+  - conda-forge
 dependencies:
-  - python >= 3.10
-  - pytorch > 2.0.0
-  - torchvision
-  - pytorch-cuda >= 11.7
+  - python=3.10
+  - pip
   - pip:
+    # PyTorch from pip (CUDA 12.6 wheels). lerobot 0.3.3 needs torch<2.8 and torchvision>=0.21.
+    - --extra-index-url https://download.pytorch.org/whl/cu126
+    - torch==2.7.1
+    - torchvision==0.22.1
+
     # Core ML
-    - numpy
+    - numpy<2  # pytorch-lightning 1.9.5 uses np.Inf, removed in numpy 2
     - scipy
     - Pillow
     - tqdm
@@ -24,7 +26,7 @@ dependencies:
     - torchmetrics
 
     # Diffusion / generative
-    - diffusers[torch]==0.24.0
+    - diffusers[torch]==0.33.1  # lerobot 0.3.3 needs diffusers>=0.27.2
     - accelerate
     - transformers
 
@@ -36,6 +38,7 @@ dependencies:
 
     # Data & datasets
     - lerobot==0.3.3
+    - huggingface-hub<1.0  # lerobot 0.3.3 targets hub 0.x
     - decord
     - h5py
     - pandas
@@ -58,3 +61,12 @@ dependencies:
     - beautifulsoup4
     - ftfy
     - protobuf==4.25.3
+
+    # BuilderBench online RL (src/builderbench, src/online_rl). JAX runs on the CPU, so no CUDA jaxlib.
+    - mujoco>=3.3.6
+    - mujoco-mjx>=3.3.6
+    - jax>=0.6.2
+    - optax
+    - flax
+    - etils
+    - ml_collections

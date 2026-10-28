@@ -1,0 +1,10 @@
+defaults:
+  - default
+
+# ORS occupancy training (src/main_occupancy.py). Values match the code defaults.
+# Timestep embedding is the original NanoWM one: sinusoidal of (1-t)*999.
+occupancy:
+  gamma: 0.99               # discount; loss = (1-gamma)*transition + gamma*bootstrap
+  flow_steps: 10            # Euler steps for target-model bootstrap samples
+  target_tau: 0.005         # Polyak rate for the target model
+  num_bootstrap_samples: 1  # bootstrap samples per window

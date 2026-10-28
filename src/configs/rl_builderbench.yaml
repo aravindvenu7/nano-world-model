@@ -1,0 +1,83 @@
+# Online RL from scratch on BuilderBench with GTSE-r / GTSE-b (src/main_builderbench.py).
+# Standalone config: nothing here is shared with the MetaWorld configs (config.yaml).
+defaults:
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+  - _self_
+
+results_dir: ${oc.env:RESULTS_DIR,./results}
+
+env_id: cube-1-task1          # cube-N-taskK (single task) or cube-N-play (self-supervised play)
+agent: gtse_r                 # gtse_r (phi without t) | gtse_b (phi and psi both see t)
+goal_space: pos               # pos: cube positions | full: gripper + cube state tokens
+seed: 0
+device: cuda
+
+num_envs: 256
+num_eval_envs: 64
+num_threads: 8                # MuJoCo rollout threads
+total_env_steps: 10000000
+warmup_env_steps: 50000       # uniform random actions before the first update
+rollout_length: 16            # env steps per env between update phases
+grad_steps_per_iter: 16
+batch_size: 1024
+buffer_capacity: 4000         # stored steps per env
+
+env:
+  early_termination: true
+  permutation_invariant_reward: true
+  vel_scale: 1.0              # linear velocities are divided by this in the tokens
+  angvel_scale: 10.0          # angular velocities are divided by this
+
+model:
+  hidden_size: 256
+  depth: 4                    # blocks per tower
+  num_heads: 4
+  mlp_ratio: 4.0
+  readout_heads: 1
+  time_embedding: fourier     # fourier: -log(1-t) | linear: (1-t)*999 sinusoidal
+  time_dim: 256
+  phi_time: null              # null = from agent (gtse_b: true, gtse_r: false)
+  psi_time: true
+
+gtse:
+  discount: 0.99              # TD discount and future-goal geometric parameter
+  target_tau: 0.005
+  goal_noise_std: 1e-4
+  huber: true
+  temp_coeff: 1.0
+  lr: 3e-4
+  grad_clip: null
+  t1_val: 0.925               # critic integrates the score over t in [0, t1_val)
+  nfe: 30                     # time points for that integral
+
+planning:
+  num_candidates: 16
+  plan_steps: 5
+  plan_lr: 0.1
+  epsilon: 0.1
+
+exploration:                  # play protocol only
+  goal_source: buffer         # buffer | mega
+  mega_kde_size: 1024
+  mega_candidates: 64
+  mega_bandwidth: 0.2         # in standardised position units
+
+diagnostics:                  # critic snapshots (src/online_rl/diagnostics.py), written to <run dir>/diagnostics/
+  every_env_steps: 5000       # env steps (summed over envs) between snapshots; 0 = off
+  grid: 40                    # points per axis over the workspace
+  cube: 0                     # which cube the cube slice moves
+  table_z: 0.02               # cube-centre height on the table
+  chunk: 1024                 # critic queries per batch
+
+logging:
+  tensorboard: true
+  log_every: 10               # iterations
+  eval_every: 100
+  save_every: 500
+
+hydra:
+  run:
+    dir: ${results_dir}/${now:%Y%m%d_%H%M%S}-builderbench-${env_id}-${agent}
+  job:
+    chdir: true

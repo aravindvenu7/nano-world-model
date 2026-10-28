@@ -1,0 +1,8 @@
+defaults:
+  - gtse
+
+# GTSE-b (src/main_gtse_bilinear.py): bilinear model, scalar score. Shared GTSE keys come from gtse.yaml.
+gtse:
+  temp_coeff: 1.0   # weight on the t-dependent term of the scalar epsilon_target
+  phi_time: true    # context tower (s, a, task) sees t
+  psi_time: true    # goal tower (x_t) sees t

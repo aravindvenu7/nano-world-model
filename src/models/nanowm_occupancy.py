@@ -10,6 +10,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 import numpy as np
 
 from einops import rearrange, repeat
@@ -110,7 +111,8 @@ class Attention(nn.Module):
             self.q_norm = RMSNorm(head_dim)
             self.k_norm = RMSNorm(head_dim)
 
-    def forward(self, x, rope_freqs=None, is_causal=False):
+    def forward(self, x, rope_freqs=None, is_causal=False, attn_mask=None):
+        # attn_mask: optional bool (B, 1, 1, N) key mask, True = attend (used for variable-size token sets).
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous()
         q, k, v = qkv.unbind(0)
@@ -126,7 +128,7 @@ class Attention(nn.Module):
         # SDPA output is [B, H, N, D]; transpose H/N before fusing heads.
         dropout_p = self.attn_drop_p if self.training else 0.0
         x = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, is_causal=is_causal, dropout_p=dropout_p,
+            q, k, v, attn_mask=attn_mask, is_causal=is_causal, dropout_p=dropout_p,
         )
         x = x.transpose(1, 2).reshape(B, N, C)
 
@@ -142,15 +144,32 @@ class Attention(nn.Module):
 class TimestepEmbedder(nn.Module):
     """
     Embeds scalar timesteps into vector representations.
+
+    embedding_type="sinusoidal": DiT embedding (frequencies 1 .. 1/10000, sized for timesteps in [0, 999]).
+    embedding_type="fourier": GTSE FourierEmbedding2 (frequencies 1 .. 100, `fourier_dim` channels); expects
+    the caller to pass u = -log(1 - t).
     """
-    def __init__(self, hidden_size, frequency_embedding_size=256):
+    def __init__(self, hidden_size, frequency_embedding_size=256, embedding_type="sinusoidal", fourier_dim=256):
         super().__init__()
+        if embedding_type not in ("sinusoidal", "fourier"):
+            raise ValueError(f"embedding_type must be 'sinusoidal' or 'fourier', got {embedding_type}")
+        self.embedding_type = embedding_type
+        if embedding_type == "fourier":
+            frequency_embedding_size = fourier_dim
         self.mlp = nn.Sequential(
             nn.Linear(frequency_embedding_size, hidden_size, bias=True),
             nn.SiLU(),
             nn.Linear(hidden_size, hidden_size, bias=True),
         )
         self.frequency_embedding_size = frequency_embedding_size
+
+    @staticmethod
+    def fourier_embedding(u, dim):
+        """GTSE FourierEmbedding2 on an already log-mapped time u = -log(1 - t)."""
+        half = dim // 2
+        freqs = torch.exp(torch.arange(half, dtype=torch.float32) * (math.log(100.0) / (half - 1))).to(device=u.device)
+        args = u[:, None].float() * freqs[None]
+        return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
 
     @staticmethod
     def timestep_embedding(t, dim, max_period=10000):
@@ -174,7 +193,10 @@ class TimestepEmbedder(nn.Module):
         return embedding
 
     def forward(self, t, use_fp16=False):
-        t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
+        if self.embedding_type == "fourier":
+            t_freq = self.fourier_embedding(t, self.frequency_embedding_size)
+        else:
+            t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         if use_fp16:
             t_freq = t_freq.to(dtype=torch.float16)
         t_emb = self.mlp(t_freq)
@@ -331,7 +353,7 @@ class TransformerBlock(nn.Module):
             self.cross_attn = CrossAttention(hidden_size, num_heads=num_heads, qkv_bias=True)
             self.cross_gate = nn.Parameter(torch.zeros(hidden_size))
 
-    def forward(self, x, c, action_emb=None, rope_freqs=None, is_causal=False):
+    def forward(self, x, c, action_emb=None, rope_freqs=None, is_causal=False, attn_mask=None):
         # c: [B', D] (batch-wise, spatial) or [B', N', D] (token-wise, temporal)
         # x: [B', N', D]
         # is_causal: only set True by caller for temporal blocks when model.causal=True
@@ -361,14 +383,14 @@ class TransformerBlock(nn.Module):
 
         # Self-attention + MLP with adaLN
         if c.ndim == 3:
-            x = x + gate_msa * self.attn(modulate(self.norm1(x), shift_msa, scale_msa), rope_freqs=rope_freqs, is_causal=is_causal)
+            x = x + gate_msa * self.attn(modulate(self.norm1(x), shift_msa, scale_msa), rope_freqs=rope_freqs, is_causal=is_causal, attn_mask=attn_mask)
             # Action injection: film — modulate after self-attn, before MLP
             if self.action_injection_type == 'film' and action_emb is not None:
                 gamma, beta = self.film_modulation(action_emb).chunk(2, dim=2)
                 x = (1 + gamma) * x + beta
             x = x + gate_mlp * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
         else:
-            x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa), rope_freqs=rope_freqs, is_causal=is_causal)
+            x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa), rope_freqs=rope_freqs, is_causal=is_causal, attn_mask=attn_mask)
             # Action injection: film — modulate after self-attn, before MLP
             if self.action_injection_type == 'film' and action_emb is not None:
                 gamma, beta = self.film_modulation(action_emb.squeeze(1)).chunk(2, dim=1)
@@ -503,6 +525,8 @@ class NanoWM(nn.Module):
         causal=False,
         num_tasks=50,
         decoder_depth=None,
+        timestep_embedding='sinusoidal',
+        time_dim=256,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -525,7 +549,7 @@ class NanoWM(nn.Module):
         self.task_embedder = TaskEmbedder(num_tasks, hidden_size)
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size)
-        self.t_embedder = TimestepEmbedder(hidden_size)
+        self.t_embedder = TimestepEmbedder(hidden_size, embedding_type=timestep_embedding, fourier_dim=time_dim)
 
         if self.extras == 2:
             self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
@@ -557,6 +581,9 @@ class NanoWM(nn.Module):
         ])
 
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
+        # Recompute each block in the backward pass instead of storing its activations (set by the trainer from
+        # experiment.infra.gradient_checkpointing). Only active while training with gradients enabled.
+        self.gradient_checkpointing = False
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -612,6 +639,11 @@ class NanoWM(nn.Module):
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
+
+    def _run_block(self, block, *args, **kwargs):
+        if self.gradient_checkpointing and self.training and torch.is_grad_enabled():
+            return torch.utils.checkpoint.checkpoint(block, *args, use_reentrant=False, **kwargs)
+        return block(*args, **kwargs)
 
     def unpatchify(self, x):
         """
@@ -756,7 +788,7 @@ class NanoWM(nn.Module):
                 else:
                     spatial_action = action_emb_spatial_in
 
-            x = spatial_block(x, c, action_emb=spatial_action, rope_freqs=self.spatial_rope_freqs, is_causal=False)
+            x = self._run_block(spatial_block, x, c, action_emb=spatial_action, rope_freqs=self.spatial_rope_freqs, is_causal=False)
             x = rearrange(x, '(b f) p d -> (b p) f d', b=batches)
 
             if i == 0:
@@ -781,7 +813,7 @@ class NanoWM(nn.Module):
                 else:
                     temporal_action = action_emb_temp_in
 
-            x = temp_block(x, c, action_emb=temporal_action, rope_freqs=self.temporal_rope_freqs, is_causal=self.causal)
+            x = self._run_block(temp_block, x, c, action_emb=temporal_action, rope_freqs=self.temporal_rope_freqs, is_causal=self.causal)
             x = rearrange(x, '(b p) f d -> (b f) p d', b=batches)
 
         return rearrange(x, '(b f) p d -> b (f p) d', b=batches, f=frames)
@@ -810,7 +842,8 @@ class NanoWM(nn.Module):
                     c = c + action_emb.squeeze(1)
                 else:
                     decoder_action = action_emb
-            x = block(
+            x = self._run_block(
+                block,
                 x,
                 c,
                 encoder_context=encoder_context,

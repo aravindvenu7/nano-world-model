@@ -66,12 +66,12 @@ def _mean_flat(x: torch.Tensor) -> torch.Tensor:
     return x.reshape(x.shape[0], -1).mean(dim=1)
 
 
-def build_occupancy_model(args):
+def build_occupancy_model(args, registry=None, **model_kwargs):
     if "NanoWM" not in args.model.arch:
         raise ValueError(f"{args.model.arch} Model Not Supported!")
 
     action_dim = args.dataset.spec.action_dim * args.dataset.frame_interval
-    return NanoWM_models[args.model.arch](
+    return (registry or NanoWM_models)[args.model.arch](
         input_size=get_model_latent_size(args),
         in_channels=get_model_latent_channels(args),
         num_classes=args.model.num_classes,
@@ -83,6 +83,7 @@ def build_occupancy_model(args):
         causal=args.model.causal,
         num_tasks=int(_cfg_select(args, "model.num_tasks", 50)),
         decoder_depth=_cfg_select(args, "model.decoder_depth", None),
+        **model_kwargs,
     )
 
 
@@ -118,7 +119,8 @@ class NanoWMOccupancyTrainingModule(LightningModule):
             raise ValueError("Occupancy training currently supports model.extras == 1 only")
 
         print("[Init] NanoWMOccupancyTrainingModule: building model", flush=True)
-        model = build_occupancy_model(args)
+        model = self._build_model(args)
+        model.gradient_checkpointing = bool(_cfg_select(args, "experiment.infra.gradient_checkpointing", False))
         if args.experiment.pretrained:
             self._load_pretrained_parameters(args, model)
 
@@ -165,9 +167,13 @@ class NanoWMOccupancyTrainingModule(LightningModule):
         print(
             "[Init] Occupancy flow config: "
             f"gamma={self.gamma}, flow_steps={self.flow_steps}, "
-            f"target_tau={self.target_tau}, bootstrap_samples={self.num_bootstrap_samples}",
+            f"target_tau={self.target_tau}, bootstrap_samples={self.num_bootstrap_samples}, "
+            f"gradient_checkpointing={model.gradient_checkpointing}",
             flush=True,
         )
+
+    def _build_model(self, args):
+        return build_occupancy_model(args)
 
     def _online_model(self):
         return self.model._orig_mod if hasattr(self.model, "_orig_mod") else self.model
@@ -555,6 +561,8 @@ class NanoWMOccupancyTrainingModule(LightningModule):
 
 
 class TrainOccupancyExperiment(BaseExperiment):
+    module_cls = NanoWMOccupancyTrainingModule
+
     def __init__(self, cfg):
         super().__init__(cfg)
         self.logger = logging.getLogger(__name__)
@@ -798,7 +806,7 @@ class TrainOccupancyExperiment(BaseExperiment):
             if is_rank_zero:
                 self.logger.info(f"Using {len(val_dataset)} validation samples")
 
-        pl_module = NanoWMOccupancyTrainingModule(args)
+        pl_module = self.module_cls(args)
         if args.experiment.resume_from_checkpoint and not need_train:
             self._load_checkpoint(args, pl_module)
 

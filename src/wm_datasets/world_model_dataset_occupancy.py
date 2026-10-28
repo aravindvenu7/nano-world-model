@@ -114,6 +114,9 @@ class WorldModelDataset(Dataset):
         self.fixed_start_indices = fixed_start_indices
         self.use_data_source_stats = use_data_source_stats
         self._inherit_stats_from = _inherit_stats_from
+        # When set (e.g. by GTSE), each item also carries "future_video": for every clip frame t, a frame t + k from
+        # the same trajectory, k ~ Geometric(1 - future_discount) renormalized to [1, steps left] (see _load_future_frames).
+        self.future_discount: Optional[float] = None
 
         # Get dataset info
         self.action_dim = data_source.action_dim * self.frame_interval
@@ -542,6 +545,12 @@ class WorldModelDataset(Dataset):
         # Trim to exactly num_frames
         video = video[:self.num_frames]
 
+        # Geometric future frames go through the same augmentation/resize/normalization as the clip.
+        num_clip_frames = video.shape[0]
+        if self.future_discount is not None:
+            future = self._load_future_frames(slice_info, traj_data.seq_length, num_clip_frames)
+            video = torch.cat([video, future], dim=0)
+
         # Apply video augmentation if provided
         if self.video_augmentation is not None:
             if self.split == "val":
@@ -598,6 +607,10 @@ class WorldModelDataset(Dataset):
             # Assume video is in [0, 1] range
             video = video * 2.0 - 1.0
 
+        future_video = None
+        if self.future_discount is not None:
+            video, future_video = video[:num_clip_frames], video[num_clip_frames:]
+
         # Create unique video name
         video_name = f"traj_{slice_info.traj_idx:04d}_start_{slice_info.start_frame:04d}"
 
@@ -612,6 +625,9 @@ class WorldModelDataset(Dataset):
             },
         }
 
+        if future_video is not None:
+            output["future_video"] = future_video  # [T, C, H, W]
+
         # Optionally include states
         if self.state_dim > 0:
             output["state"] = states  # [T, state_dim]
@@ -623,6 +639,30 @@ class WorldModelDataset(Dataset):
                 output["task"] = torch.tensor(int(traj_data.meta["task_index"]), dtype=torch.long)
 
         return output
+
+    def _load_future_frames(self, slice_info: SliceInfo, seq_length: int, num_clip_frames: int) -> torch.Tensor:
+        """Sample one future frame per clip frame, on the frame_interval grid, from a geometric distribution
+        renormalized to the steps left in the trajectory (dre_iclr `_renormalized_geom_sample_between`).
+
+        Truncating (min(k, steps left)) would put all the tail mass on the last frame; renormalizing spreads it
+        over [1, steps left] instead. A frame with no steps left returns itself.
+        """
+        interval = self.frame_interval
+        cur = slice_info.start_frame + interval * np.arange(num_clip_frames)
+        horizon = (seq_length - 1 - cur) // interval  # steps available after each clip frame
+        # Inverse CDF of Geometric(1 - gamma) conditioned on k <= horizon: k = ceil(log(1 - u * (1 - gamma^h)) / log gamma).
+        # np.random (not self.rng) so each DataLoader worker, seeded by _seed_worker, draws different offsets.
+        log_gamma = np.log(max(self.future_discount, 1e-10))
+        cdf = np.maximum(1.0 - np.exp(np.clip(horizon * log_gamma, -700, 0)), 1e-10)
+        u = np.random.uniform(0, 1, size=num_clip_frames)
+        offsets = np.ceil(np.log(np.maximum(1 - u * cdf, 1e-10)) / log_gamma).astype(np.int64)
+        offsets = np.where(horizon > 0, np.clip(offsets, 1, np.maximum(horizon, 1)), 0)
+        future_idx = cur + interval * offsets
+        frames = [
+            self.data_source.load_visual_frames(index=slice_info.traj_idx, start=int(i), end=int(i) + 1, step=1)
+            for i in future_idx
+        ]
+        return torch.cat(frames, dim=0)  # [T, C, H, W]
 
     def get_normalization_stats(self) -> Dict[str, torch.Tensor]:
         """

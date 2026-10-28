@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
@@ -35,7 +36,7 @@ def _storage_root(ds: DataSource) -> Path:
             continue
         if candidate.exists() and candidate.is_dir():
             return candidate
-    return Path.home() / ".cache" / "nano-world-model"
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "nano-world-model"
 
 
 def cache_path(

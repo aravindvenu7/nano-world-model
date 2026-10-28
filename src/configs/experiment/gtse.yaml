@@ -1,0 +1,11 @@
+defaults:
+  - default
+
+# GTSE time-score training (src/main_gtse.py). Values match the code defaults.
+gtse:
+  discount: 0.99          # TD discount; also the geometric future-frame parameter
+  target_tau: 0.005       # Polyak rate for the target model
+  goal_noise_std: 1e-4    # noise added to s' and sf latents
+  huber: true             # Huber loss on the TD branch
+  time_embedding: fourier # fourier: Fourier of -log(1-t) | linear: sinusoidal of (1-t)*999
+  time_dim: 256           # Fourier embedding channels (fourier only); same as ORS's sinusoidal features
